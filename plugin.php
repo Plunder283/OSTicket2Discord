@@ -2,7 +2,7 @@
 return array(
     'id'          => 'discord',                  		   // Must match folder suffix
     'version'     => '0.9.2',
-    'name'        => 'Discord Notifier',
+    'name'        => 'OSTicket2Discord',
     'author'      => 'Ryan Autet',
     'description' => 'Notify Discord on new ticket.',
     'url'         => 'https://github.com/fswolf',
