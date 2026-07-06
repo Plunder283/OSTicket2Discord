@@ -28,7 +28,11 @@ class DiscordPlugin extends Plugin {
     }
 
     function onTicketCreated($ticket) {
-        $this->dispatch('notify_new_ticket', 'tpl_new_ticket', $ticket, []);
+        $message = '';
+        if ($entry = $ticket->getLastMessage())
+            $message = $this->cleanMessage((string) $entry->getBody());
+
+        $this->dispatch('notify_new_ticket', 'tpl_new_ticket', $ticket, ['message' => $message]);
     }
 
     function onAgentReply($entry) {
@@ -123,7 +127,7 @@ class DiscordPlugin extends Plugin {
             '{mention}'    => $vars['mention'] ?? '',
             '{id}'         => $ticket->getId(),
             '{number}'     => $ticket->getNumber(),
-            '{subject}'    => $ticket->getSubject(),
+            '{subject}'    => $this->stripHtml($ticket->getSubject()),
             '{name}'       => (string) $ticket->getName(),
             '{email}'      => $ticket->getEmail(),
             '{department}' => $ticket->getDeptName(),
@@ -157,6 +161,16 @@ class DiscordPlugin extends Plugin {
         return $text;
     }
 
+    // Ticket subjects can come out of osTicket wrapped in rich-text markup
+    // (e.g. "<p>Some subject</p>"), which must not leak into the embed as
+    // literal tags. Unlike cleanMessage(), this collapses everything onto a
+    // single line since a subject is never meant to wrap into paragraphs.
+    protected function stripHtml($html) {
+        $html = html_entity_decode((string) $html, ENT_QUOTES, 'UTF-8');
+        $text = trim(strip_tags($html));
+        return preg_replace('/\s+/', ' ', $text);
+    }
+
     // Per-event display metadata for the embed: an emoji + label for the
     // title, and a Discord embed color (decimal RGB).
     protected function eventMeta($enableKey) {
@@ -173,8 +187,16 @@ class DiscordPlugin extends Plugin {
     protected function buildEmbed($enableKey, $ticket, $vars, $description) {
         $meta = $this->eventMeta($enableKey);
 
+        // Discord always renders `description` above `fields`, regardless of
+        // key order in the payload, so Sujet/Contenu (which must appear
+        // above Demandeur/Département/Agent) are folded into the
+        // description rather than added as fields.
+        $subject  = $this->stripHtml($ticket->getSubject()) ?: '—';
+        $sections = ["**Sujet**\n{$subject}"];
+        if ($description !== '')
+            $sections[] = "**Contenu du ticket**\n{$description}";
+
         $fields = [
-            ['name' => 'Sujet',       'value' => (string) $ticket->getSubject() ?: '—', 'inline' => false],
             ['name' => 'Demandeur',   'value' => sprintf('%s (%s)', (string) $ticket->getName(), $ticket->getEmail()), 'inline' => true],
             ['name' => 'Département', 'value' => (string) $ticket->getDeptName() ?: '—', 'inline' => true],
         ];
@@ -188,17 +210,14 @@ class DiscordPlugin extends Plugin {
         if (isset($vars['status']))
             $fields[] = ['name' => 'Statut', 'value' => sprintf('%s → %s', $vars['old_status'] ?: '—', $vars['status']), 'inline' => true];
 
-        $embed = [
-            'title'     => sprintf('%s %s — Ticket #%s', $meta['emoji'], $meta['label'], $ticket->getNumber()),
-            'color'     => $meta['color'],
-            'fields'    => $fields,
-            'footer'    => ['text' => 'osTicket'],
-            'timestamp' => date('c'),
+        return [
+            'title'       => sprintf('%s %s — Ticket #%s', $meta['emoji'], $meta['label'], $ticket->getNumber()),
+            'description' => implode("\n\n", $sections),
+            'color'       => $meta['color'],
+            'fields'      => $fields,
+            'footer'      => ['text' => 'osTicket'],
+            'timestamp'   => date('c'),
         ];
-        if ($description !== '')
-            $embed['description'] = $description;
-
-        return $embed;
     }
 
     protected function postToDiscord($webhookUrl, $username, $avatarUrl, $content, $embed) {

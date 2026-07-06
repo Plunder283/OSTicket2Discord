@@ -70,7 +70,7 @@ class DiscordConfig extends PluginConfig {
             'tpl_new_ticket' => new TextareaField([
                 'label'         => 'New ticket message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "",
+                'default'       => "{message}",
                 'required'      => false,
             ]),
             'tpl_new_message' => new TextareaField([
