@@ -16,16 +16,15 @@ class DiscordPlugin extends Plugin {
         Signal::connect('model.updated', [$this, 'onModelUpdated'], 'Ticket');
     }
 
-    // Temporary debug helper: writes to a file inside the plugin's own
-    // directory so it can be inspected via FTP/file manager even when the
-    // server's PHP/webserver error log isn't accessible. Remove once the
-    // "no webhook fires" issue is diagnosed.
+    // Temporary debug helper: writes to osTicket's own System Logs (Admin
+    // Panel > Dashboard > System Logs) so it's visible without any
+    // filesystem/server-log access. Remove once the "no webhook fires"
+    // issue is diagnosed. The trailing `false` disables emailing the admin
+    // on every single log entry.
     protected function debugLog($msg) {
-        @file_put_contents(
-            __DIR__ . '/discord_debug.log',
-            '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n",
-            FILE_APPEND
-        );
+        global $ost;
+        if ($ost)
+            $ost->logWarning('DiscordPlugin debug', $msg, false);
     }
 
     function onTicketCreated($ticket) {
