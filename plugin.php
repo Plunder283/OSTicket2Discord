@@ -10,4 +10,3 @@ return array(
     'config'      => 'config.php:DiscordConfig',           // <file>:<ConfigClassName>
     'instance'    => true                                  // Enables per-instance settings
 );
-?>

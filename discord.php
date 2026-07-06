@@ -239,4 +239,3 @@ class DiscordPlugin extends Plugin {
         }
     }
 }
-?>

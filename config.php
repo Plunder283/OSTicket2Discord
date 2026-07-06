@@ -100,4 +100,3 @@ class DiscordConfig extends PluginConfig {
         ];
     }
 }
-?>
