@@ -1,8 +1,8 @@
 <?php
 return array(
-    'id'          => 'discord',                  		   // Must match folder suffix
+    'id'          => 'OsTicket-Discord',                  		   // Must match folder suffix
     'version'     => '1.0.0',
-    'name'        => 'OsTicketDiscord',
+    'name'        => 'OsTicket-Discord',
     'author'      => 'Plunder283',
     'description' => 'Notify Discord on new tickets, replies, status changes, and closures.',
     'url'         => 'https://github.com/Plunder283',
