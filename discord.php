@@ -102,10 +102,15 @@ class DiscordPlugin extends Plugin {
                 $avatar_url = trim($cfg->get('discord_avatar_url')) ?: '';
                 $mention    = ($enableKey == 'notify_new_ticket') ? trim($cfg->get('discord_mention')) : '';
 
-                $content = $this->renderTemplate($cfg->get($tplKey), $ticket, $vars + ['mention' => $mention]);
-                $this->debugLog("  instance {$instance->getId()}: posting to Discord, content length "
-                    . mb_strlen($content));
-                $this->postToDiscord($url, $username, $avatar_url, $content);
+                // {mention} is rendered blank in the embed description: a
+                // role/user mention placed *inside* an embed does not
+                // trigger a Discord notification, so it's sent separately
+                // as top-level message content instead.
+                $description = $this->renderTemplate($cfg->get($tplKey), $ticket, $vars + ['mention' => '']);
+                $embed       = $this->buildEmbed($enableKey, $ticket, $vars, $description);
+
+                $this->debugLog("  instance {$instance->getId()}: posting to Discord (embed)");
+                $this->postToDiscord($url, $username, $avatar_url, $mention, $embed);
             }
         } catch (\Throwable $e) {
             error_log('DiscordPlugin dispatch error: ' . $e->getMessage());
@@ -137,23 +142,73 @@ class DiscordPlugin extends Plugin {
     }
 
     protected function cleanMessage($html) {
-        $text = html_entity_decode(strip_tags($html), ENT_QUOTES, 'UTF-8');
-        $text = trim(preg_replace('/\s+/', ' ', $text));
+        // Decode entities BEFORE stripping tags: if the body has an escaped
+        // tag (e.g. "&lt;p&gt;"), strip_tags() ignores it as plain text, and
+        // decoding afterwards would then reveal a literal "<p>" in the
+        // output. Decoding first lets strip_tags() catch it either way.
+        $html = html_entity_decode((string) $html, ENT_QUOTES, 'UTF-8');
+        $html = preg_replace('/<\/(p|div|li)>|<br\s*\/?>/i', "\n", $html);
+        $text = trim(strip_tags($html));
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
         if (mb_strlen($text) > 500)
             $text = mb_substr($text, 0, 500) . '…';
 
         return $text;
     }
 
-    protected function postToDiscord($webhookUrl, $username, $avatarUrl, $content) {
-        if ($content === '')
-            return;
+    // Per-event display metadata for the embed: an emoji + label for the
+    // title, and a Discord embed color (decimal RGB).
+    protected function eventMeta($enableKey) {
+        $meta = [
+            'notify_new_ticket'    => ['emoji' => '🎫', 'label' => 'Nouveau ticket',           'color' => 0x57F287],
+            'notify_new_message'   => ['emoji' => '💬', 'label' => 'Nouveau message',           'color' => 0x5865F2],
+            'notify_agent_reply'   => ['emoji' => '🗨️', 'label' => 'Réponse',                   'color' => 0x3498DB],
+            'notify_status_change' => ['emoji' => '🔄', 'label' => 'Changement de statut',       'color' => 0xE67E22],
+            'notify_closed'        => ['emoji' => '✅', 'label' => 'Ticket fermé',               'color' => 0xED4245],
+        ];
+        return $meta[$enableKey] ?? ['emoji' => '🔔', 'label' => 'Notification', 'color' => 0x99AAB5];
+    }
 
+    protected function buildEmbed($enableKey, $ticket, $vars, $description) {
+        $meta = $this->eventMeta($enableKey);
+
+        $fields = [
+            ['name' => 'Sujet',       'value' => (string) $ticket->getSubject() ?: '—', 'inline' => false],
+            ['name' => 'Demandeur',   'value' => sprintf('%s (%s)', (string) $ticket->getName(), $ticket->getEmail()), 'inline' => true],
+            ['name' => 'Département', 'value' => (string) $ticket->getDeptName() ?: '—', 'inline' => true],
+        ];
+
+        if ($enableKey == 'notify_new_ticket')
+            $fields[] = ['name' => 'Priorité', 'value' => (string) $ticket->getPriority() ?: '—', 'inline' => true];
+
+        if (!empty($vars['agent']))
+            $fields[] = ['name' => 'Agent', 'value' => $vars['agent'], 'inline' => true];
+
+        if (isset($vars['status']))
+            $fields[] = ['name' => 'Statut', 'value' => sprintf('%s → %s', $vars['old_status'] ?: '—', $vars['status']), 'inline' => true];
+
+        $embed = [
+            'title'     => sprintf('%s %s — Ticket #%s', $meta['emoji'], $meta['label'], $ticket->getNumber()),
+            'color'     => $meta['color'],
+            'fields'    => $fields,
+            'footer'    => ['text' => 'osTicket'],
+            'timestamp' => date('c'),
+        ];
+        if ($description !== '')
+            $embed['description'] = $description;
+
+        return $embed;
+    }
+
+    protected function postToDiscord($webhookUrl, $username, $avatarUrl, $content, $embed) {
         $payload = [
             'username'   => $username,
             'avatar_url' => $avatarUrl,
-            'content'    => $content,
+            'embeds'     => [$embed],
         ];
+        if ($content !== '')
+            $payload['content'] = $content;
 
         $ch = curl_init($webhookUrl);
         curl_setopt_array($ch, [

@@ -28,7 +28,7 @@ class DiscordConfig extends PluginConfig {
             'discord_mention' => new TextboxField([
                 'label'         => 'Mention',
                 'configuration' => ['size' => 40, 'length' => 100],
-                'hint'          => 'Optional. e.g. @here, @everyone, or a role mention like <@&123456789012345678>. Leave blank for none. Used on new tickets only unless added manually to another template below via {mention}.',
+                'hint'          => 'Optional. e.g. @here, @everyone, or a role mention like <@&123456789012345678>. Leave blank for none. Sent as a ping alongside the embed on new tickets only.',
                 'required'      => false
             ]),
 
@@ -59,38 +59,42 @@ class DiscordConfig extends PluginConfig {
 
             'templates_section' => new SectionBreakField([
                 'label' => 'Message Templates',
-                'hint'  => 'Customize the message posted for each event. Available placeholders: '
-                         . '{mention} {id} {number} {subject} {name} {email} {department} {priority} '
-                         . '{status} {old_status} {agent} {message}',
+                'hint'  => 'Customize the description text shown inside the Discord embed for each event. '
+                         . 'Ticket subject, requester, department, priority, agent, and status are already shown '
+                         . 'as embed fields, so you don\'t need to repeat them here. Available placeholders: '
+                         . '{id} {number} {subject} {name} {email} {department} {priority} '
+                         . '{status} {old_status} {agent} {message}. '
+                         . '(The Mention setting above is sent as a separate ping outside the embed, since '
+                         . 'Discord does not notify for mentions placed inside an embed.)',
             ]),
             'tpl_new_ticket' => new TextareaField([
                 'label'         => 'New ticket message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "{mention}\n**New Ticket!**\n**Subject:** {subject}\n**From:** {name} ({email})\n**Ticket:** #{number}",
+                'default'       => "",
                 'required'      => false,
             ]),
             'tpl_new_message' => new TextareaField([
                 'label'         => 'New requester message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "**New message on ticket #{number}**\n**Subject:** {subject}\n**From:** {name} ({email})\n**Message:** {message}",
+                'default'       => "{message}",
                 'required'      => false,
             ]),
             'tpl_agent_reply' => new TextareaField([
                 'label'         => 'Staff reply message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "**New reply on ticket #{number}**\n**Subject:** {subject}\n**Agent:** {agent}\n**Message:** {message}",
+                'default'       => "{message}",
                 'required'      => false,
             ]),
             'tpl_status_change' => new TextareaField([
                 'label'         => 'Status change message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "**Ticket #{number} status changed**\n**Subject:** {subject}\n**Status:** {old_status} → {status}",
+                'default'       => "",
                 'required'      => false,
             ]),
             'tpl_closed' => new TextareaField([
                 'label'         => 'Ticket closed message',
                 'configuration' => ['rows' => 4, 'cols' => 80],
-                'default'       => "**Ticket #{number} closed**\n**Subject:** {subject}\n**Closed by:** {agent}",
+                'default'       => "",
                 'required'      => false,
             ]),
         ];
