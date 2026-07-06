@@ -63,19 +63,28 @@ class DiscordPlugin extends Plugin {
     }
 
     protected function dispatch($enableKey, $tplKey, $ticket, $vars) {
-        foreach ($this->getActiveInstances() as $instance) {
-            $cfg = $instance->getConfig();
+        // Signal::send() does not catch exceptions from subscribers, so any
+        // error here (missing curl/mbstring extension, network failure, bad
+        // template, etc.) would otherwise bubble up and abort the ticket
+        // creation/reply request that triggered it. Never let a Discord
+        // notification failure break core ticket handling.
+        try {
+            foreach ($this->getActiveInstances() as $instance) {
+                $cfg = $instance->getConfig();
 
-            $url = trim($cfg->get('discord_webhook_url'));
-            if (!$url || !$cfg->get($enableKey))
-                continue;
+                $url = trim($cfg->get('discord_webhook_url'));
+                if (!$url || !$cfg->get($enableKey))
+                    continue;
 
-            $username   = trim($cfg->get('discord_username')) ?: 'osTicket';
-            $avatar_url = trim($cfg->get('discord_avatar_url')) ?: '';
-            $mention    = ($enableKey == 'notify_new_ticket') ? trim($cfg->get('discord_mention')) : '';
+                $username   = trim($cfg->get('discord_username')) ?: 'osTicket';
+                $avatar_url = trim($cfg->get('discord_avatar_url')) ?: '';
+                $mention    = ($enableKey == 'notify_new_ticket') ? trim($cfg->get('discord_mention')) : '';
 
-            $content = $this->renderTemplate($cfg->get($tplKey), $ticket, $vars + ['mention' => $mention]);
-            $this->postToDiscord($url, $username, $avatar_url, $content);
+                $content = $this->renderTemplate($cfg->get($tplKey), $ticket, $vars + ['mention' => $mention]);
+                $this->postToDiscord($url, $username, $avatar_url, $content);
+            }
+        } catch (\Throwable $e) {
+            error_log('DiscordPlugin dispatch error: ' . $e->getMessage());
         }
     }
 
@@ -127,7 +136,14 @@ class DiscordPlugin extends Plugin {
             CURLOPT_POSTFIELDS     => json_encode($payload),
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 10,
+            // This runs synchronously inside the ticket create/reply request
+            // (osTicket signals have no async/queue option), so keep both
+            // timeouts short: if Discord/network is unreachable, a slow
+            // default (or no connect timeout at all) blocks a web worker for
+            // the full duration on every single ticket action, which can
+            // exhaust the worker pool and take the whole site down.
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT        => 5,
         ]);
         $resp     = curl_exec($ch);
         $errno    = curl_errno($ch);
